@@ -46,12 +46,14 @@ function fixture(): string {
   return root
 }
 
-it('ships both Darwin CPUs by default or the requested smoke CPU, Windows x64, Linux x64 and nothing elsewhere', () => {
+it('ships both Darwin CPUs by default or the requested smoke CPU, Windows x64, the Linux host CPU and nothing elsewhere', () => {
   expect(desktopRuntimeTargets('darwin', {})).toEqual([{ target: 'mac-arm64', arch: 'arm64' }, { target: 'mac-x64', arch: 'x64' }])
   expect(desktopRuntimeTargets('darwin', { DSH_MAC_SMOKE_ARCH: 'arm64' })).toEqual([{ target: 'mac-arm64', arch: 'arm64' }])
   expect(desktopRuntimeTargets('darwin', { DSH_MAC_SMOKE_ARCH: 'x64' })).toEqual([{ target: 'mac-x64', arch: 'x64' }])
   expect(desktopRuntimeTargets('win32', {})).toEqual([{ target: 'win-x64', arch: 'x64' }])
-  expect(desktopRuntimeTargets('linux', {})).toEqual([{ target: 'linux-x64', arch: 'x64' }])
+  expect(desktopRuntimeTargets('linux', {}, 'x64')).toEqual([{ target: 'linux-x64', arch: 'x64' }])
+  expect(desktopRuntimeTargets('linux', {}, 'arm64')).toEqual([{ target: 'linux-arm64', arch: 'arm64' }])
+  expect(desktopRuntimeTargets('linux', {}, 'ia32')).toEqual([])
   expect(desktopRuntimeTargets('freebsd', {})).toEqual([])
 })
 
@@ -77,9 +79,14 @@ it('accepts a complete two-CPU tree and reports each manifest', () => {
   ])
   expect(verifyDesktopRuntimeTree(root, 'freebsd', '2.0.0')).toEqual([])
   const linuxRoot = fixture()
-  const linuxX64 = writePayload(linuxRoot, 'x64', { manifest: { platform: 'linux' } })
-  expect(verifyDesktopRuntimeTree(linuxRoot, 'linux', '2.0.0')).toEqual([
-    { arch: 'x64', directory: linuxX64, manifest: expect.objectContaining({ platform: 'linux', arch: 'x64', node: '24.21.0', pnpm: '11.28.5' }) },
+  const linuxPayload = writePayload(linuxRoot, 'arm64', { manifest: { platform: 'linux' } })
+  expect(verifyDesktopRuntimeTree(linuxRoot, 'linux', '2.0.0', 'arm64')).toEqual([
+    { arch: 'arm64', directory: linuxPayload, manifest: expect.objectContaining({ platform: 'linux', arch: 'arm64', node: '24.21.0', pnpm: '11.28.5' }) },
+  ])
+  const linuxX64Root = fixture()
+  const linuxX64Payload = writePayload(linuxX64Root, 'x64', { manifest: { platform: 'linux' } })
+  expect(verifyDesktopRuntimeTree(linuxX64Root, 'linux', '2.0.0', 'x64')).toEqual([
+    { arch: 'x64', directory: linuxX64Payload, manifest: expect.objectContaining({ platform: 'linux', arch: 'x64', node: '24.21.0', pnpm: '11.28.5' }) },
   ])
 })
 
@@ -89,7 +96,8 @@ it('re-checks the prepared build tree against the package manifest before packag
   const runtime = desktopRuntimeBuildPaths(root).runtime
   expect(verifyPreparedDesktopRuntime(root, 'freebsd')).toEqual([])
   expect(() => verifyPreparedDesktopRuntime(root, 'darwin')).toThrow('missing arm64 payload manifest')
-  expect(() => verifyPreparedDesktopRuntime(root, 'linux')).toThrow('missing x64 payload manifest')
+  expect(() => verifyPreparedDesktopRuntime(root, 'linux', 'arm64')).toThrow('missing arm64 payload manifest')
+  expect(() => verifyPreparedDesktopRuntime(root, 'linux', 'x64')).toThrow('missing x64 payload manifest')
   writePayload(runtime, 'arm64')
   writePayload(runtime, 'x64')
   expect(verifyPreparedDesktopRuntime(root, 'darwin').map(payload => payload.arch)).toEqual(['arm64', 'x64'])

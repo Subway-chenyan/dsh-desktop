@@ -114,13 +114,26 @@ describe('Linux packaging orchestration', () => {
     expect(seen[0]!.CSC_IDENTITY_AUTO_DISCOVERY).toBe('false')
   })
 
-  it('rejects non-Linux hosts and non-x64 architectures', () => {
+  it('rejects non-Linux hosts and unsupported architectures', () => {
     expect(() => packageLinuxArtifacts(options({ platform: 'win32' })))
       .toThrow('must be built on a native Linux host')
-    expect(() => packageLinuxArtifacts(options({ arch: 'arm64' })))
-      .toThrow('require x64 Node')
+    expect(() => packageLinuxArtifacts(options({ arch: 'ia32' })))
+      .toThrow('require x64 or arm64 Node')
     expect(() => packageLinuxArtifacts(options({ nodeVersion: '20.1.0' })))
       .toThrow('Node 22.19+ or Node 24.x')
+  })
+
+  it('packages the host CPU the gate accepted', () => {
+    const run = vi.fn()
+
+    packageLinuxArtifacts(options({ run, arch: 'arm64', env: { DSH_PACKAGE_CHECK_ALREADY_RAN: '1' } }))
+
+    expect(run.mock.calls[0]![1]).toContain('--arm64')
+    expect(run.mock.calls[0]![1]).not.toContain('--x64')
+
+    const x64 = vi.fn()
+    packageLinuxArtifacts(options({ run: x64, env: { DSH_PACKAGE_CHECK_ALREADY_RAN: '1' } }))
+    expect(x64.mock.calls[0]![1]).toContain('--x64')
   })
 
   it('strips signing secrets case-insensitively', () => {

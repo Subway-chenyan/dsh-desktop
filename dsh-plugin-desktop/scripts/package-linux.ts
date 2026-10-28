@@ -1,4 +1,4 @@
-/** Build an unsigned Linux x64 AppImage and Debian package on a native Linux host. */
+/** Build an unsigned Linux AppImage and Debian package for the host CPU on a native Linux host. */
 
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -114,7 +114,7 @@ export function createLinuxPackageOptions(verifier = './verify-linux-artifacts.t
     desktopRoot,
     builderCli: require.resolve('electron-builder/cli.js'),
     prepareRuntime: () => {
-      prepareFsExtForElectron({ platform: 'linux', arch: 'x64', desktopRoot })
+      prepareFsExtForElectron({ platform: 'linux', arch: process.arch, desktopRoot })
       verifyPreparedDesktopRuntime(desktopRoot, 'linux')
     },
     verifier: fileURLToPath(new URL(verifier, import.meta.url)),
@@ -129,8 +129,8 @@ function assertLinuxPackageHost(options: LinuxPackageOptions): void {
   if (options.platform !== 'linux') {
     throw new Error('Linux artifacts must be built on a native Linux host')
   }
-  if (options.arch !== 'x64') {
-    throw new Error(`Linux artifacts require x64 Node; received ${options.arch}`)
+  if (options.arch !== 'x64' && options.arch !== 'arm64') {
+    throw new Error(`Linux artifacts require x64 or arm64 Node; received ${options.arch}`)
   }
   const versionMatch = /^(\d+)\.(\d+)\./u.exec(options.nodeVersion)
   const major = Number(versionMatch?.[1])
@@ -142,7 +142,7 @@ function assertLinuxPackageHost(options: LinuxPackageOptions): void {
   }
 }
 
-/** Run the gates and package the unsigned x64 Linux AppImage and Debian package. */
+/** Run the gates and package the unsigned Linux AppImage and Debian package for the host CPU. */
 export function packageLinuxArtifacts(
   options: LinuxPackageOptions = createLinuxPackageOptions(),
 ): void {
@@ -150,7 +150,7 @@ export function packageLinuxArtifacts(
   const compression = linuxCompressionOverride(options.env)
 
   const cleanEnvironment = withoutLinuxSigningSecrets(options.env)
-  options.log('Building unsigned Linux x64 AppImage and Debian package; signing is a separate release step.')
+  options.log(`Building unsigned Linux ${options.arch} AppImage and Debian package; signing is a separate release step.`)
   if (compression !== undefined) {
     options.log(`Packaging the Linux artifacts with ${compression} compression.`)
   }
@@ -172,7 +172,7 @@ export function packageLinuxArtifacts(
       '--linux',
       'AppImage',
       'deb',
-      '--x64',
+      `--${options.arch}`,
       '--publish',
       'never',
       '--config.npmRebuild=false',
