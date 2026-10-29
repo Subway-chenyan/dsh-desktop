@@ -1,4 +1,4 @@
-/** Verify the unsigned Linux AppImage and deb artifacts plus the unpacked executable. */
+/** Verify the unsigned Linux x64 AppImage and deb artifacts plus the unpacked executable. */
 
 import { closeSync, openSync, readFileSync, readSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -8,18 +8,6 @@ const ELF_HEADER_BYTES = 4
 const APPIMAGE_MAGIC_OFFSET = 8
 const APPIMAGE_MAGIC_BYTES = 3
 const DEB_MEMBER_HEADER_BYTES = 60
-
-/**
- * `${arch}` spelling of each CPU per artifact kind, as Electron Builder expands it, plus the
- * unpacked directory it writes: only the Intel names are re-spelled for AppImage and deb.
- */
-const LINUX_ARCH_NAMES = {
-  x64: { appImage: 'x86_64', deb: 'amd64', unpacked: 'linux-unpacked' },
-  arm64: { appImage: 'arm64', deb: 'arm64', unpacked: 'linux-arm64-unpacked' },
-} as const
-
-/** CPUs Linux packages can be built for. */
-export type LinuxArtifactArch = keyof typeof LINUX_ARCH_NAMES
 
 /** Paths returned after Linux artifact verification succeeds. */
 export interface LinuxArtifacts {
@@ -37,8 +25,6 @@ export interface LinuxArtifactVerificationOptions {
   readonly desktopRoot: string
   /** Product version embedded in the expected artifact names. */
   readonly version: string
-  /** CPU the artifacts were built for; defaults to the running host's. */
-  readonly arch?: LinuxArtifactArch
 }
 
 function readVersion(desktopRoot: string): string {
@@ -133,23 +119,21 @@ function defaultOptions(): LinuxArtifactVerificationOptions {
   return {
     desktopRoot,
     version: readVersion(desktopRoot),
-    arch: process.arch === 'arm64' ? 'arm64' : 'x64',
   }
 }
 
 /**
  * Verify the exact AppImage, Debian package, and unpacked application executable.
- * @param options - Artifact root, expected product version, and target CPU.
+ * @param options - Artifact root and expected product version.
  * @returns The verified artifact paths.
  */
 export function verifyLinuxArtifacts(
   options: LinuxArtifactVerificationOptions = defaultOptions(),
 ): LinuxArtifacts {
-  const names = LINUX_ARCH_NAMES[options.arch ?? 'x64']
   const distDir = join(options.desktopRoot, 'dist')
-  const appImagePath = join(distDir, `DSH-Desktop-${options.version}-${names.appImage}.AppImage`)
-  const debPath = join(distDir, `DSH-Desktop-${options.version}-${names.deb}.deb`)
-  const applicationPath = join(distDir, names.unpacked, 'dsh-desktop')
+  const appImagePath = join(distDir, `DSH-Desktop-${options.version}-x86_64.AppImage`)
+  const debPath = join(distDir, `DSH-Desktop-${options.version}-amd64.deb`)
+  const applicationPath = join(distDir, 'linux-unpacked', 'dsh-desktop')
 
   assertAppImage(appImagePath, 'Linux AppImage')
   assertDebArchive(debPath, 'Linux Debian package')

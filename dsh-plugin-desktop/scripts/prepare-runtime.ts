@@ -19,17 +19,12 @@ export interface DesktopRuntimeTarget {
 /**
  * Payloads one Desktop package carries: both Darwin CPUs by default (or the single smoke CPU when
  * `DSH_MAC_SMOKE_ARCH` selects one), because macOS releases are universal and the installed slice
- * selects its payload at runtime; Windows x64; the Linux host CPU; nothing on other platforms.
+ * selects its payload at runtime; Windows x64 and Linux x64 on their hosts; nothing on other platforms.
  * @param platform - Electron platform being packaged.
  * @param env - Process environment inspected for single-architecture smoke selection.
- * @param hostArch - CPU running the preparation, defaulting to this process; tests inject it.
  * @returns Locked targets and their CPUs.
  */
-export function desktopRuntimeTargets(
-  platform: NodeJS.Platform,
-  env: NodeJS.ProcessEnv = process.env,
-  hostArch: string = process.arch,
-): readonly DesktopRuntimeTarget[] {
+export function desktopRuntimeTargets(platform: NodeJS.Platform, env: NodeJS.ProcessEnv = process.env): readonly DesktopRuntimeTarget[] {
   if (platform === 'darwin') {
     const arch = macSmokeArchitecture(env)
     if (arch === 'arm64') return [{ target: 'mac-arm64', arch: 'arm64' }]
@@ -37,10 +32,7 @@ export function desktopRuntimeTargets(
     return [{ target: 'mac-arm64', arch: 'arm64' }, { target: 'mac-x64', arch: 'x64' }]
   }
   if (platform === 'win32') return [{ target: 'win-x64', arch: 'x64' }]
-  if (platform === 'linux') {
-    if (hostArch === 'arm64') return [{ target: 'linux-arm64', arch: 'arm64' }]
-    if (hostArch === 'x64') return [{ target: 'linux-x64', arch: 'x64' }]
-  }
+  if (platform === 'linux') return [{ target: 'linux-x64', arch: 'x64' }]
   return []
 }
 
@@ -155,17 +147,11 @@ function requireFile(path: string, description: string): void {
  * @param runtimeRoot - `.desktop-build/runtime` or the packaged `Resources/runtime`.
  * @param platform - Platform the package targets.
  * @param expectedVersion - Product version every manifest must record.
- * @param hostArch - CPU running the check, defaulting to this process; tests inject it.
  * @returns The verified payloads in target order.
  */
-export function verifyDesktopRuntimeTree(
-  runtimeRoot: string,
-  platform: NodeJS.Platform,
-  expectedVersion: string,
-  hostArch: string = process.arch,
-): VerifiedDesktopRuntime[] {
+export function verifyDesktopRuntimeTree(runtimeRoot: string, platform: NodeJS.Platform, expectedVersion: string): VerifiedDesktopRuntime[] {
   const verified: VerifiedDesktopRuntime[] = []
-  for (const { arch } of desktopRuntimeTargets(platform, process.env, hostArch)) {
+  for (const { arch } of desktopRuntimeTargets(platform)) {
     const directory = primaryRuntimeDirectory(runtimeRoot, arch)
     const manifestFile = join(directory, 'runtime.json')
     requireFile(manifestFile, `${arch} payload manifest`)
@@ -238,15 +224,10 @@ export async function prepareDesktopInterpreters(options: PrepareDesktopInterpre
  * before the package gates started.
  * @param desktopRoot - Desktop package root.
  * @param platform - Platform the package targets.
- * @param hostArch - CPU running the check, defaulting to this process; tests inject it.
  * @returns The verified payloads.
  */
-export function verifyPreparedDesktopRuntime(
-  desktopRoot: string,
-  platform: NodeJS.Platform = process.platform,
-  hostArch: string = process.arch,
-): VerifiedDesktopRuntime[] {
-  return verifyDesktopRuntimeTree(desktopRuntimeBuildPaths(desktopRoot).runtime, platform, expectedDesktopVersion(desktopRoot), hostArch)
+export function verifyPreparedDesktopRuntime(desktopRoot: string, platform: NodeJS.Platform = process.platform): VerifiedDesktopRuntime[] {
+  return verifyDesktopRuntimeTree(desktopRuntimeBuildPaths(desktopRoot).runtime, platform, expectedDesktopVersion(desktopRoot))
 }
 
 const invokedPath = process.argv[1]

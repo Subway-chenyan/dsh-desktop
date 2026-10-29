@@ -21,7 +21,7 @@ function debArchive(): Buffer {
   return archive
 }
 
-function fixture(version = '2.0.0', arch: 'x64' | 'arm64' = 'x64'): {
+function fixture(version = '2.0.0'): {
   readonly root: string
   readonly appImage: string
   readonly deb: string
@@ -30,10 +30,10 @@ function fixture(version = '2.0.0', arch: 'x64' | 'arm64' = 'x64'): {
   const root = mkdtempSync(join(tmpdir(), 'dsh-linux-artifacts-'))
   temporaryRoots.push(root)
   const dist = join(root, 'dist')
-  const unpacked = join(dist, arch === 'arm64' ? 'linux-arm64-unpacked' : 'linux-unpacked')
+  const unpacked = join(dist, 'linux-unpacked')
   mkdirSync(unpacked, { recursive: true })
-  const appImagePath = join(dist, `DSH-Desktop-${version}-${arch === 'arm64' ? 'arm64' : 'x86_64'}.AppImage`)
-  const debPath = join(dist, `DSH-Desktop-${version}-${arch === 'arm64' ? 'arm64' : 'amd64'}.deb`)
+  const appImagePath = join(dist, `DSH-Desktop-${version}-x86_64.AppImage`)
+  const debPath = join(dist, `DSH-Desktop-${version}-amd64.deb`)
   const application = join(unpacked, 'dsh-desktop')
   writeFileSync(appImagePath, appImage(), { mode: 0o755 })
   chmodSync(appImagePath, 0o755)
@@ -52,16 +52,6 @@ describe('Linux artifact verification', () => {
     const value = fixture()
 
     expect(verifyLinuxArtifacts({ desktopRoot: value.root, version: '2.0.0' })).toEqual({
-      appImagePath: value.appImage,
-      debPath: value.deb,
-      applicationPath: value.application,
-    })
-  })
-
-  it('resolves the aarch64 artifact names and unpacked directory for arm64 builds', () => {
-    const value = fixture('2.0.0', 'arm64')
-
-    expect(verifyLinuxArtifacts({ desktopRoot: value.root, version: '2.0.0', arch: 'arm64' })).toEqual({
       appImagePath: value.appImage,
       debPath: value.deb,
       applicationPath: value.application,

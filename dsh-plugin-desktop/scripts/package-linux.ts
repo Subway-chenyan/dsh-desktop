@@ -46,6 +46,8 @@ export interface LinuxPackageOptions {
   readonly platform: NodeJS.Platform
   /** Node architecture executing the package build. */
   readonly arch: string
+  /** CPUs the edition can package; Stable carries an x64 payload only and keeps the x64 default. */
+  readonly supportedArchs?: readonly string[]
   /** Node version executing the package build. */
   readonly nodeVersion: string
   /** Repository root containing the Yarn workspace. */
@@ -114,7 +116,7 @@ export function createLinuxPackageOptions(verifier = './verify-linux-artifacts.t
     desktopRoot,
     builderCli: require.resolve('electron-builder/cli.js'),
     prepareRuntime: () => {
-      prepareFsExtForElectron({ platform: 'linux', arch: process.arch, desktopRoot })
+      prepareFsExtForElectron({ platform: 'linux', arch: 'x64', desktopRoot })
       verifyPreparedDesktopRuntime(desktopRoot, 'linux')
     },
     verifier: fileURLToPath(new URL(verifier, import.meta.url)),
@@ -129,8 +131,9 @@ function assertLinuxPackageHost(options: LinuxPackageOptions): void {
   if (options.platform !== 'linux') {
     throw new Error('Linux artifacts must be built on a native Linux host')
   }
-  if (options.arch !== 'x64' && options.arch !== 'arm64') {
-    throw new Error(`Linux artifacts require x64 or arm64 Node; received ${options.arch}`)
+  const supportedArchs = options.supportedArchs ?? ['x64']
+  if (!supportedArchs.includes(options.arch)) {
+    throw new Error(`Linux artifacts require ${supportedArchs.join(' or ')} Node; received ${options.arch}`)
   }
   const versionMatch = /^(\d+)\.(\d+)\./u.exec(options.nodeVersion)
   const major = Number(versionMatch?.[1])
