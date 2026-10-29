@@ -2,7 +2,6 @@
 import { auditHostPlugins, configureHostLogging, hostLog, hostOperation } from './logging.ts'
 import { basename, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { inspect } from 'node:util'
 import { loadLayeredEnv } from '@deepseek-ai/dsh-app-boot'
 import { runProfile } from '@deepseek-ai/dsh/profile-boot'
 import type {} from '@deepseek-ai/dsh-client-connection'
@@ -16,13 +15,16 @@ import { atomicJson } from '../private-files.ts'
 import type NextWebServer from '../webserver.ts'
 import { disableAsarArchiveView } from '../asar-archive-policy.ts'
 import { maskSecrets } from '../mask-secrets.ts'
+import { MEMORY_SAMPLE_INTERVAL_MS, hostMemoryUsage } from '../memory-monitor.ts'
 import { parseSystemProxyProbe, SYSTEM_PROXY_ENV, withSystemProxy } from '../system-proxy.ts'
 import { watchPlatformLogin, type PlatformLoginAccount } from './platform-login.ts'
 import { installAgentPresetResolution } from './agent-preset.ts'
 import { installCuaDriverResolution } from './cua-driver.ts'
 import { installOfficeEngineResolution } from './office-engine.ts'
+import { installOfficialCuaResolution } from './official-cua.ts'
 import { installSharpWasmResolution } from './sharp-wasm.ts'
 import { installSkillBadgeResolution } from './skill-badge.ts'
+import { formatFatalDiagnostic } from './fatal-diagnostic.ts'
 import * as desktopOffice from './office.ts'
 import { resolveOfficeConfig } from './office.ts'
 
@@ -42,6 +44,8 @@ export async function main(): Promise<void> {
   installCuaDriverResolution(runtimeDir)
   // The badge skill tells the model to take its PNG from the directory it announces, which shells and the Host's filesystem service cannot read inside the archive.
   installSkillBadgeResolution(runtimeDir)
+  // The official Computer Use provider starts the helper beside its own module as a child process, which reads no archive.
+  installOfficialCuaResolution(runtimeDir)
   // Linux sharp must not load its native backends beside the GLib Electron links; it runs its WebAssembly build instead.
   installSharpWasmResolution(runtimeDir)
   const preferences = parsePreferences(JSON.parse(process.env.DSH_NEXT_PREFERENCES ?? '{}'))
@@ -77,10 +81,18 @@ export async function main(): Promise<void> {
     if (!process.connected || !process.send) return resolveSend()
     process.send(value, error => error ? reject(error) : resolveSend())
   })
+  // Memory evidence for the Desktop's incident snapshots. Pushed rather than requested, so a Host too
+  // busy or too short of memory to answer still leaves its last reading behind (#1511).
+  const memory = setInterval(() => {
+    try { void send({ type: 'memory', ...hostMemoryUsage(process.memoryUsage()) }).catch(() => {}) }
+    catch { /* A failed reading drops only this sample. */ }
+  }, MEMORY_SAMPLE_INTERVAL_MS)
+  memory.unref()
   let stopping: Promise<void> | undefined
   const accountWatch = new AbortController()
   const stop = (): Promise<void> => stopping ??= (async () => {
     const end = hostOperation('host', 'shutdown')
+    clearInterval(memory)
     accountWatch.abort()
     const running = await application.catch(() => undefined)
     try { await running?.shutdown.shutdown(0); end() } catch (error) { end(error); throw error }
@@ -140,15 +152,12 @@ export async function main(): Promise<void> {
   }
 }
 
-/** Upper bound of the startup diagnostic carried over IPC; the head holds the message and stack. */
-const MAX_FATAL_DIAGNOSTIC_CHARS = 64 * 1024
-
 function fatal(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error)
   // The shell receives the complete inspected error here, not through stderr:
   // stderr bytes and this IPC message race, and the shell reports the first
   // failure it sees.
-  const diagnostic = inspect(error, { depth: 4, maxArrayLength: 50 }).slice(0, MAX_FATAL_DIAGNOSTIC_CHARS)
+  const diagnostic = formatFatalDiagnostic(error)
   if (process.connected) process.send?.({ type: 'fatal', message, diagnostic }, () => { if (process.connected) process.disconnect() })
   console.error(error)
   process.exitCode = 1
